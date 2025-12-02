@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Number Jump </title>
+<style>
+body { margin: 0; background: linear-gradient(#87CEEB, #98D8C8); overflow: hidden; font-family: Arial; }
+canvas { display: block; touch-action: none; }
+#ui { position: absolute; top: 20px; left: 20px; color: #fff; font-size: 28px; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); z-index: 10; }
+#nextNum { position: absolute; top: 60px; left: 20px; color: #FFD700; font-size: 36px; font-weight: bold; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); z-index: 10; }
+#gameOver { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(255,255,255,0.95); padding: 30px; border-radius: 20px; text-align: center; display: none; z-index: 20; }
+button { background: #4CAF50; color: white; border: none; padding: 15px 30px; border-radius: 10px; font-size: 20px; cursor: pointer; margin: 10px; touch-action: manipulation; }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<div id="ui">Score: <span id="score">0</span></div>
+<div id="nextNum">TAP to Jump to 1! 👆</div>
+<div id="gameOver">
+<h2>🎉 Great Job! 🎉</h2>
+<p>Highest Number: <span id="finalScore">0</span></p>
+<button onclick="restart()">Play Again </button>
+</div>
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+let game = {
+    score: 0,
+    nextNum: 1,
+    highScore: parseInt(localStorage.getItem('numberJumpHigh')) || 0,
+    player: { 
+        x: 150, 
+        y: 0, 
+        vy: 0, 
+        onGround: false,
+        radius: 25, 
+        groundY: 0 
+    },
+    platforms: [],
+    gameOver: false,
+    spawnTimer: 0,
+    difficulty: 1
+};
+
+// Fix resize
+window.addEventListener('resize', () => {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    game.player.groundY = canvas.height - 120;
+});
+
+function update() {
+    if (game.gameOver) return;
+    
+    // PERFECT JUMP PHYSICS - FIXED!
+    game.player.vy += 0.8; // Gravity
+    game.player.y += game.player.vy;
+    
+    // Ground collision
+    if (game.player.y >= game.player.groundY) {
+        game.player.y = game.player.groundY;
+        game.player.vy = 0;
+        game.player.onGround = true;
+    } else {
+        game.player.onGround = false;
+    }
+    
+    // Spawn platforms PERFECTLY timed
+    game.spawnTimer += 0.016; // 60fps delta
+    if (game.spawnTimer > 1.5 - game.difficulty * 0.1) {
+        spawnPlatform();
+        game.spawnTimer = 0;
+    }
+    
+    // Update platforms
+    for (let i = game.platforms.length - 1; i >= 0; i--) {
+        let p = game.platforms[i];
+        p.x -= 3 + game.difficulty * 0.1;
+        
+        if (p.x < -100) {
+            game.platforms.splice(i, 1);
+            continue;
+        }
+        
+        // PERFECT collision - ONLY when falling onto platform
+        if (game.player.vy > 0 && !p.passed && 
+            game.player.x > p.x - 20 && game.player.x < p.x + p.w + 20 &&
+            game.player.y + game.player.radius > p.y - 15 &&
+            game.player.y + game.player.radius < p.y + 10) {
+            
+            if (p.num === game.nextNum) {
+                // SUCCESS - JUMP!
+                game.score = game.nextNum;
+                game.nextNum++;
+                p.passed = true;
+                game.player.vy = -22; // BIG JUMP!
+                game.player.y = p.y - game.player.radius - 15;
+                game.player.x = p.x + p.w / 2;
+                
+                // Increase difficulty
+                game.difficulty = Math.min(2.5, game.nextNum * 0.1);
+                
+                updateUI();
+            } else {
+                gameOver();
+            }
+        }
+    }
+    
+    // Fall off screen = game over
+    if (game.player.y > canvas.height + 100) {
+        gameOver();
+    }
+}
+
+function spawnPlatform() {
+    let y = 250 + Math.random() * 200;
+    game.platforms.push({
+        x: canvas.width + 50,
+        y: y,
+        num: 1 + Math.floor(Math.random() * Math.max(3, game.nextNum + 1)),
+        w: 100,
+        h: 20,
+        passed: false,
+        speed: 3 + game.difficulty * 0.2
+    });
+}
+
+function updateUI() {
+    document.getElementById('score').textContent = game.score;
+    document.getElementById('nextNum').textContent = 'Jump to ' + game.nextNum + '! 👆';
+}
+
+function draw() {
+    // Sky
+    let gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    gradient.addColorStop(0, '#87CEEB');
+    gradient.addColorStop(1, '#98D8C8');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Clouds
+    ctx.fillStyle = 'rgba(255,255,255,0.8)';
+    for (let i = 0; i < 5; i++) {
+        let x = (200 + i * 300 + Math.sin(Date.now() * 0.001) * 50) % canvas.width;
+        ctx.beginPath();
+        ctx.arc(x, 80 + i * 15, 30, 0, Math.PI * 2);
+        ctx.arc(x + 35, 80 + i * 15, 40, 0, Math.PI * 2);
+        ctx.arc(x + 70, 80 + i * 15, 30, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    
+    // Platforms
+    game.platforms.forEach(p => {
+        ctx.shadowColor = p.num === game.nextNum ? '#FFD700' : '#ffffff';
+        ctx.shadowBlur = 20;
+        ctx.fillStyle = p.passed ? '#4CAF50' : (p.num === game.nextNum ? '#FFD700' : '#FF9800');
+        ctx.fillRect(p.x - 3, p.y - 3, p.w + 6, p.h + 6);
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(p.x, p.y, p.w, p.h);
+        ctx.fillStyle = '#333';
+        ctx.font = 'bold 32px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(p.num, p.x + p.w/2, p.y + p.h/2);
+    });
+    
+    // CUTE JUMPING KID - PERFECT!
+    ctx.save();
+    ctx.translate(game.player.x, game.player.y);
+    
+    // Jump squash & stretch
+    let squash = game.player.onGround ? 0.9 : 1.1;
+    let jumpScale = game.player.onGround ? 1 : 0.9 + Math.abs(game.player.vy) * 0.001;
+    
+    // Head
+    ctx.fillStyle = '#FF6B6B';
+    ctx.beginPath();
+    ctx.arc(0, -30 * jumpScale, 25 * squash, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Eyes (bigger when jumping)
+    let eyeScale = jumpScale * 1.2;
+    ctx.fillStyle = '#FFE66D';
+    ctx.beginPath();
+    ctx.arc(-10 * eyeScale, -32 * jumpScale, 8, 0, Math.PI * 2);
+    ctx.arc(10 * eyeScale, -32 * jumpScale, 8, 0, Math.PI * 2);
+    ctx.fill();
+    
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.arc(-7 * eyeScale, -30 * jumpScale, 3, 0, Math.PI * 2);
+    ctx.arc(7 * eyeScale, -30 * jumpScale, 3, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Happy smile
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 4;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.arc(0, -20 * jumpScale, 12, 0.3, Math.PI - 0.3);
+    ctx.stroke();
+    
+    // Body
+    ctx.fillStyle = '#4ECDC4';
+    ctx.fillRect(-18 * squash, -5 * jumpScale, 36 * squash, 40 * jumpScale);
+    
+    // Arms waving!
+    let armWave = Math.sin(Date.now() * 0.01) * 10;
+    ctx.fillStyle = '#FF6B6B';
+    ctx.save();
+    ctx.translate(-25 * squash, 5 * jumpScale);
+    ctx.rotate(armWave * 0.05);
+    ctx.fillRect(0, 0, 15, 25);
+    ctx.restore();
+    
+    ctx.save();
+    ctx.translate(25 * squash, 5 * jumpScale);
+    ctx.rotate(-armWave * 0.05);
+    ctx.fillRect(-15, 0, 15, 25);
+    ctx.restore();
+    
+    // Legs running
+    let legOffset = Math.sin(Date.now() * 0.015) * 8;
+    ctx.fillRect(-12 * squash, 35 * jumpScale, 10 * squash, 25);
+    ctx.fillRect(2 * squash, 35 * jumpScale + legOffset, 10 * squash, 25);
+    
+    ctx.restore();
+}
+
+function gameLoop() {
+    update();
+    draw();
+    requestAnimationFrame(gameLoop);
+}
+
+function gameOver() {
+    game.gameOver = true;
+    if (game.score > game.highScore) {
+        game.highScore = game.score;
+        localStorage.setItem('numberJumpHigh', game.highScore);
+    }
+    document.getElementById('finalScore').textContent = game.score + ' (Best: ' + game.highScore + ')';
+    document.getElementById('gameOver').style.display = 'block';
+}
+
+function restart() {
+    game = {
+        score: 0,
+        nextNum: 1,
+        highScore: game.highScore,
+        player: { x: 150, y: 0, vy: 0, onGround: true, radius: 25, groundY: canvas.height - 120 },
+        platforms: [],
+        gameOver: false,
+        spawnTimer: 0,
+        difficulty: 1
+    };
+    updateUI();
+    document.getElementById('gameOver').style.display = 'none';
+}
+
+// PERFECT TOUCH - TAP JUMP + SWIPE MOVE
+canvas.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    if (!game.gameOver && game.player.onGround) {
+        game.player.vy = -22; // PERFECT JUMP HEIGHT
+        game.player.onGround = false;
+    }
+}, { passive: false });
+
+canvas.addEventListener('mousedown', (e) => {
+    if (!game.gameOver && game.player.onGround) {
+        game.player.vy = -22;
+        game.player.onGround = false;
+    }
+});
+
+// Mouse/touch move character
+canvas.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    if (!game.gameOver) {
+        let touch = e.touches[0];
+        game.player.x = touch.clientX - 25;
+        game.player.x = Math.max(40, Math.min(canvas.width - 40, game.player.x));
+    }
+}, { passive: false });
+
+canvas.addEventListener('mousemove', (e) => {
+    if (!game.gameOver) {
+        game.player.x = e.clientX - 25;
+        game.player.x = Math.max(40, Math.min(canvas.width - 40, game.player.x));
+    }
+});
+
+updateUI();
+gameLoop();
+</script>
+</body>
+</html>
